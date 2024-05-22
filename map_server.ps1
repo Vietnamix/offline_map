@@ -5,9 +5,9 @@
     It fetches tiles from the OpenStreetMap service and stores them on the local machine.
 
     @package OfflineMapCacheServer
-    @file server.ps1
+    @file map.server.ps1
     @version 1.0
-    @since 2022-03-14
+    @update 2024-05-22
     @autor Eric Guiffault
 #>
 
@@ -127,7 +127,7 @@ try {
                 }
             }
 
-            # List of URLs
+            # List of URLs to low down the speed of request per server
             $urls = @(
                 "https://tile.openstreetmap.org/$x/$y/$z.png",
                 "https://a.tile.openstreetmap.org/$x/$y/$z.png",
