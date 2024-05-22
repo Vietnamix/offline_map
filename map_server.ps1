@@ -1,13 +1,26 @@
-﻿# Script Directory
+<# 
+    Tile Cache Server for Offline Map Construction
+
+    This script sets up a local web server on port 8086 to cache and update map tiles locally.
+    It fetches tiles from the OpenStreetMap service and stores them on the local machine.
+
+    @package OfflineMapCacheServer
+    @file server.ps1
+    @version 1.0
+    @since 2022-03-14
+    @autor Eric Guiffault
+#>
+
+# Script Directory
 $scriptDir = "C:\Users\Eric\Documents\_Map_Offline_Powershell"
 
-# Fichier de journalisation
+# Log file for server activities
 $logFile = Join-Path -Path $scriptDir -ChildPath "server_log.txt"
 
-# Réinitialiser le fichier de journalisation
+# Initialize the log file
 "Server log initialized at $(Get-Date)" | Out-File -FilePath $logFile -Force
 
-# Colorify the Write-Output
+# Functions to colorize the output
 function Sentinel { process { Write-Host $_ -ForegroundColor white -BackgroundColor DarkBlue } }
 function Green { process { Write-Host $_ -ForegroundColor DarkGreen -BackgroundColor White } }
 function Done { process { Write-Host $_ -ForegroundColor Green -BackgroundColor DarkCyan } }
@@ -15,7 +28,7 @@ function Skipped { process { Write-Host $_ -ForegroundColor white -BackgroundCol
 function Red { process { Write-Host $_ -ForegroundColor Red -BackgroundColor White } }
 function DarkRed { process { Write-Host $_ -ForegroundColor DarkRed -BackgroundColor White } }
 
-# Fonction de journalisation
+# Logging function
 function Log-Message {
     param (
         [string]$message,
@@ -27,13 +40,13 @@ function Log-Message {
     $formattedMessage | Out-File -FilePath $logFile -Append
 }
 
-# Configuration du serveur HTTP
+# HTTP server configuration
 $listener = [System.Net.HttpListener]::new()
 $port = 8086
 $prefix = "http://*:$port/"
 $listener.Prefixes.Add($prefix)
 
-# Variables globales
+# Global variables
 $global:hitCounter = @()
 $global:maxHits = 500
 $global:greenCounts = @{}
@@ -52,30 +65,30 @@ try {
             [string]$level
         )
 
-        # Ajouter le hit au compteur
+        # Add the hit to the counter
         $global:hitCounter += $color
         $global:totalHits++
 
-        # Initialiser les compteurs pour le niveau s'ils n'existent pas
+        # Initialize counters for the level if they don't exist
         if (-not $global:greenCounts.ContainsKey($level)) {
             $global:greenCounts[$level] = 0
             $global:zoomLevels[$level] = 0
         }
 
-        # Mettre à jour les compteurs
+        # Update counters
         if ($color -eq "Green") {
             $global:greenCounts[$level]++
         }
 
-        # Mettre à jour le compteur total par niveau
+        # Update total count per level
         $global:zoomLevels[$level]++
 
-        # Si plus de $global:maxHits hits, retirer le plus ancien
+        # Remove the oldest hit if the counter exceeds max hits
         if ($global:hitCounter.Count -gt $global:maxHits) {
             $global:hitCounter = $global:hitCounter[1..$($global:hitCounter.Count - 1)]
         }
 
-        # Afficher les statistiques tous les 100 hits
+        # Display statistics every 100 hits
         if ($global:totalHits % 100 -eq 0) {
             $stats = "Cache Ratio Statistics (Last $($global:hitCounter.Count) hits):"
             foreach ($level in $global:greenCounts.Keys) {
@@ -100,8 +113,8 @@ try {
         $zfile = Join-Path -Path $scriptDir -ChildPath "OSM\$x\$y\$z.png"
 
         if (-Not (Test-Path $zfile)) {
-            #write-output "File does not exist locally. Downloading from OpenStreetMap..." | DarkRed
-            # Créer les dossiers si nécessaire
+            # File does not exist locally. Downloading from OpenStreetMap...
+            # Create directories if necessary
             $dir = Split-Path -Path $zfile -Parent
             if (-Not (Test-Path $dir)) {
                 write-output "Directory does not exist. Creating: $dir" | DarkRed
@@ -114,7 +127,7 @@ try {
                 }
             }
 
-            # Liste des URLs
+            # List of URLs
             $urls = @(
                 "https://tile.openstreetmap.org/$x/$y/$z.png",
                 "https://a.tile.openstreetmap.org/$x/$y/$z.png",
@@ -122,11 +135,11 @@ try {
                 "https://c.tile.openstreetmap.org/$x/$y/$z.png"
             )
 
-            # Sélectionner aléatoirement une URL
+            # Randomly select a URL
             $randomIndex = Get-Random -Minimum 0 -Maximum $urls.Count
             $url = $urls[$randomIndex]
 
-            #write-output "Downloading image from: $url" | DarkRed
+            # Download image
             try {
                 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
                 $session.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.140 Safari/537.36"
@@ -184,12 +197,10 @@ try {
                 return
             }
 
-            # Modifier les paramètres pour correspondre à l'URL de la source XYZ
+            # Adjust parameters to match the XYZ source URL
             $x = $request.Url.Segments[1].Trim('/')
             $y = $request.Url.Segments[2].Trim('/')
             $z = $request.Url.Segments[3].Trim('/')
-
-            #write-output "Received request for tile: x=${x}, y=${y}, z=${z}" | Green
 
             $imagePath = Get-Image -x $x -y $y -z $z
 
@@ -197,13 +208,11 @@ try {
                 $response.StatusCode = 500
                 $response.StatusDescription = "Internal Server Error"
             } elseif (Test-Path $imagePath) {
-                #write-output "Serving image from: ${imagePath}" | Green
                 $bytes = [System.IO.File]::ReadAllBytes($imagePath)
                 $response.ContentType = "image/png"
                 $response.ContentLength64 = $bytes.Length
                 $response.OutputStream.Write($bytes, 0, $bytes.Length)
             } else {
-                #write-output "Image not found: ${imagePath}" | DarkRed
                 $response.StatusCode = 404
                 $response.StatusDescription = "Not Found"
             }
@@ -214,7 +223,7 @@ try {
         }
     }
 
-    # Fonction pour démarrer le serveur
+    # Function to start the server
     function Start-Listener {
         while (-Not $stopServer) {
             try {
@@ -233,7 +242,7 @@ try {
         write-output "Server stopped." | DarkRed
     }
 
-    # Démarrer le serveur
+    # Start the server
     Start-Listener
 } finally {
     $listener.Stop()
